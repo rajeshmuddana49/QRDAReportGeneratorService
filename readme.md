@@ -1,16 +1,17 @@
 # QRDA Report Generator
 
 ## Usage
-### Build docker image
-Run the below command from project directory. Make sure docker running in local
-```
-mvn spring-boot:build-image
-```
 
 ### Run application in local
 Run the below command from project directory. Make sure Java 17 JDK installed.
 ```
 mvn spring-boot:run
+```
+
+### Build docker image
+Run the below command from project directory. Make sure docker running in local
+```
+mvn spring-boot:build-image
 ```
 
 ### API Usage

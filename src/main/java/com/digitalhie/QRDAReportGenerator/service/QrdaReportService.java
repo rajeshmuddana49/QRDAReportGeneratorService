@@ -32,34 +32,89 @@ public class QrdaReportService {
         return "OK";
     }
 
-    @PostMapping(value = "/{qrdaType}",
+    @PostMapping(value = "/qrda1",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_XML_VALUE)
-    public void generateQrdaFile(
-            @PathVariable("qrdaType") String qrdaType,
+    public void generateQrda1File(
             @RequestBody JsonNode input,
             HttpServletResponse response) throws Exception {
 
-        String templateFilePath = null;
-        if(qrdaType.equalsIgnoreCase("qrda1")) {
-            templateFilePath = "templates/2023-CMS-QRDA-I-v1.2-Sample-File.xml";
-        }
-        else if(qrdaType.equalsIgnoreCase("qrda3")) {
-            templateFilePath = "templates/2023MIPSGroupSampleQRDA-III-v1.1.xml";
-        }
-        else {
+        try {
+            if(!input.get("contained").get(0).get("resourceType").asText().equalsIgnoreCase("Patient")) {
+                throw new RuntimeException("Expecting Patient resourceType file");
+            }
+        } catch (Exception ex) {
             response.resetBuffer();
             response.setStatus(400);
             response.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
             response.getOutputStream().print(new ObjectMapper()
-                    .writeValueAsString("Invalid QRDA type. Only qrda1 or qrda3 are supported."));
+                    .writeValueAsString("Error occurred while parsing the input file : "+ex.getMessage()));
             response.flushBuffer();
             return;
         }
 
+        String templateFilePath = "templates/2023-CMS-QRDA-I-v1.2-Sample-File.xml";
         String fileName = null;
         try {
-            fileName = ccdGenerator.createCCD(templateFilePath, input, qrdaType);
+            fileName = ccdGenerator.createQRDA1(templateFilePath, input);
+        } catch (Exception ex) {
+            logger.error("Error occurred while creating CCD file: "+ex.getMessage(), ex);
+            response.resetBuffer();
+            response.setStatus(500);
+            response.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
+            response.getOutputStream().print(new ObjectMapper()
+                    .writeValueAsString("Error occurred while creating CCD file : "+ex.getMessage()));
+            response.flushBuffer();
+            return;
+        }
+
+        File file = new File(fileName);
+        try (OutputStream out = response.getOutputStream(); FileInputStream in = new FileInputStream(file)) {
+            response.setContentType("application/xml");
+            response.setHeader("Content-disposition", "attachment; filename=" + file.getName());
+            // copy from in to out
+            IOUtils.copy(in, out);
+            response.flushBuffer();
+        }
+        catch (Exception ex) {
+            logger.error("Error occurred while formatting response file: "+ex.getMessage(), ex);
+            response.resetBuffer();
+            response.setStatus(500);
+            response.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
+            response.getOutputStream().print(new ObjectMapper()
+                    .writeValueAsString("Error occurred while formatting response file: "+ex.getMessage()));
+        }
+        finally {
+            Files.deleteIfExists(Paths.get(fileName));
+        }
+        response.flushBuffer();
+    }
+    @PostMapping(value = "/qrda3",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_XML_VALUE)
+    public void generateQrda3File(
+            @RequestBody JsonNode input,
+            HttpServletResponse response) throws Exception {
+
+        try {
+            if(!input.get("contained").get(0).get("resourceType").asText().equalsIgnoreCase("Organization")) {
+                throw new RuntimeException("Expecting Organization resourceType file");
+            }
+        } catch (Exception ex) {
+            response.resetBuffer();
+            response.setStatus(400);
+            response.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
+            response.getOutputStream().print(new ObjectMapper()
+                    .writeValueAsString("Error occurred while parsing the input file : "+ex.getMessage()));
+            response.flushBuffer();
+            return;
+        }
+
+        String templateFilePath = "templates/2023MIPSGroupSampleQRDA-III-v1.1.xml";
+
+        String fileName = null;
+        try {
+            fileName = ccdGenerator.createQRDA3(templateFilePath, input);
         } catch (Exception ex) {
             logger.error("Error occurred while creating CCD file: "+ex.getMessage(), ex);
             response.resetBuffer();

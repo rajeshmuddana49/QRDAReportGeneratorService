@@ -1,14 +1,14 @@
 package com.digitalhie.QRDAReportGenerator;
 
-import com.digitalhie.QRDAReportGenerator.model.DiagnosticStudy;
-import com.digitalhie.QRDAReportGenerator.model.ObservationDetail;
+import com.digitalhie.QRDAReportGenerator.model.Address;
+import com.digitalhie.QRDAReportGenerator.model.PatientData;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import org.openhealthtools.mdht.uml.cda.*;
 import org.openhealthtools.mdht.uml.cda.consol.ConsolPackage;
 import org.openhealthtools.mdht.uml.cda.util.CDAUtil;
 import org.openhealthtools.mdht.uml.hl7.datatypes.*;
-import org.openhealthtools.mdht.uml.hl7.vocab.*;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -24,120 +24,111 @@ public class UnitTest {
 
     public static void main(String[] args) throws Exception {
 
-        String templateFilePath =  "templates/2023MIPSGroupSampleQRDA-III-v1.1.xml"; // "templates/2023-CMS-QRDA-I-v1.2-Sample-File.xml";
+        String templateFilePath =  "templates/2023MIPSGroupSampleQRDA-III-v1.1.xml";
         ObjectMapper mapper = new ObjectMapper();
-        File from = new File("src/test/resources/templates/sample-input.json");
+        File from = new File("src/test/resources/templates/sample-qrda3-input.json");
         JsonNode input = mapper.readTree(from);
+
+        Map<String, String> referenceValues = new HashMap<>();
+        referenceValues.put("initial-population","IPOP");
+        referenceValues.put("numerator","NUMER");
+        referenceValues.put("denominator","DENOM");
+        referenceValues.put("denominator-exclusion","DENEX");
+
+        Map<String, String> period = extractPeriod(input);
+        Map<String, Integer> populationCounts =  extractPopulationCounts(input, referenceValues);
 
         ConsolPackage.eINSTANCE.eClass();
         InputStream cpResource = Thread.currentThread().getContextClassLoader()
                 .getResourceAsStream(templateFilePath);
         ClinicalDocument oClinicalDocument = CDAUtil.load(cpResource); //Loads CDADocument.
 
-        Section measureSection = oClinicalDocument.getSections().stream()
-                .filter(section -> {
-                    for(II templateId: section.getTemplateIds()) {
-                        if(templateId.getRoot() !=null && templateId.getRoot().equals("2.16.840.1.113883.10.20.24.2.2")) {
-                            return true;
+        // Find measure section with templateId
+        oClinicalDocument.getSections().forEach(section -> {
+            for(II templateId: section.getTemplateIds()) {
+                // Check by templateId for measures section
+                if(templateId.getRoot() !=null && templateId.getRoot().equals("2.16.840.1.113883.10.20.24.2.2")) {
+                    section.getActs().forEach(act -> {
+                        if(act.getCode().getDisplayName().equalsIgnoreCase("Observation Parameters")) {
+                            IVL_TS effectiveTime = DatatypesFactory.eINSTANCE.createIVL_TS(period.get("start"), period.get("end"));
+                            act.setEffectiveTime(effectiveTime);
                         }
-                    }
-                    return false;
-                }).findFirst().orElseThrow(() -> new Exception("Measure section not found at the template"));
-
-        Map<String, String> codeSystemNames = new HashMap<>();
-        codeSystemNames.put("LOINC","2.16.840.1.113883.6.1");
-
-        ObservationDetail o = new ObservationDetail();
-        o.setId("dummyId");
-        o.setName("dummyName");
-        measureSection.getEntries().add(createEntryWithObservation(o, codeSystemNames));
+                    });
+                    section.getOrganizers().forEach(organizer -> {
+                        organizer.getComponents().forEach(component4 -> {
+                            Observation observation = component4.getObservation();
+                            observation.getEntryRelationships().forEach(entryRelationship -> {
+                                if(entryRelationship.getObservation().getCode().getCode().equalsIgnoreCase("MSRAGG")) {
+                                    String code = ((CD)observation.getValues().stream().findFirst().get()).getCode();
+                                    if(populationCounts.containsKey(code)) {
+                                        INT value = (INT) entryRelationship.getObservation().getValues().stream().findFirst().get();
+                                        value.setValue(populationCounts.get(code));
+                                    }
+                                }
+                            });
+                        });
+                    });
+                }
+            }
+        });
 
         // write to file
-        String fileName = UUID.randomUUID()+"_ccd_file.xml";
+        String fileName = UUID.randomUUID()+"_qrda3_ccd_file.xml";
         FileOutputStream fos = new FileOutputStream(fileName);
         CDAUtil.save(oClinicalDocument, fos);
         fos.close();
         if(cpResource!=null)
             cpResource.close();
+
     }
 
-    private static Entry createEntryWithEncounter(ObservationDetail observationDetail, Map<String, String> codeSystemNames) {
-        Entry entry = CDAFactory.eINSTANCE.createEntry();
-        entry.setTypeCode(x_ActRelationshipEntry.DRIV);
-        CD code = DatatypesFactory.eINSTANCE.createCD();
-        code.setCodeSystemName("LOINC");
-        code.setCodeSystem(codeSystemNames.get("LOINC"));
-        code.setDisplayName(observationDetail.getName());
-        Encounter e = CDAFactory.eINSTANCE.createEncounter();
-        e.setCode(code);
-        e.setClassCode(ActClass.ENC);
-        e.setMoodCode(x_DocumentEncounterMood.EVN);
-        ED ed = DatatypesFactory.eINSTANCE.createED("Encounter Performed: "+observationDetail.getName());
-        e.setStatusCode(DatatypesFactory.eINSTANCE.createCS("completed"));
-        e.setText(ed);
-        EntryRelationship er = CDAFactory.eINSTANCE.createEntryRelationship();
-        Observation o = CDAFactory.eINSTANCE.createObservation();
-        CD value =  DatatypesFactory.eINSTANCE.createCD();
-        value.setCodeSystem(observationDetail.getId());
-        o.getValues().add(value);
-        er.setObservation(o);
-        e.getEntryRelationships().add(er);
-        entry.setEncounter(e);
-
-        return entry;
+    private static Map<String, String> extractPeriod(JsonNode input) {
+        Map<String, String> period = new HashMap<>();
+        period.put("start", formatDate(input.get("period").get("start").asText()));
+        period.put("end", formatDate(input.get("period").get("end").asText()));
+        return period;
     }
 
-    private static Entry createEntryWithObservation(ObservationDetail observationDetail, Map<String, String> codeSystemNames) {
-        Entry entry = CDAFactory.eINSTANCE.createEntry();
-        entry.setTypeCode(x_ActRelationshipEntry.DRIV);
-        CD code = DatatypesFactory.eINSTANCE.createCD();
-        code.setCodeSystemName("LOINC");
-        code.setCodeSystem(codeSystemNames.get("LOINC"));
-        code.setDisplayName(observationDetail.getName());
-        Observation o = CDAFactory.eINSTANCE.createObservation();
-        o.setCode(code);
-        o.setClassCode(ActClassObservation.OBS);
-        o.setMoodCode(x_ActMoodDocumentObservation.EVN);
-        ED ed = DatatypesFactory.eINSTANCE.createED("Patient Characteristic "+observationDetail.getName());
-        o.setStatusCode(DatatypesFactory.eINSTANCE.createCS("completed"));
-        o.setText(ed);
-        ST derivationExpr = DatatypesFactory.eINSTANCE.createST(
-                observationDetail.getName()+"_PatientCharacteristic"+observationDetail.getName());
-        o.setDerivationExpr(derivationExpr);
-
-        CD value =  DatatypesFactory.eINSTANCE.createCD();
-        value.setCodeSystem(observationDetail.getId());
-        o.getValues().add(value);
-        II templateId = DatatypesFactory.eINSTANCE.createII("rootId","extensionId");
-        II id = DatatypesFactory.eINSTANCE.createII("sampleId","sampleExtensionId");
-        o.getTemplateIds().add(templateId);
-        o.getIds().add(id);
-        entry.setObservation(o);
-
-        return entry;
+    private static Map<String, Integer> extractPopulationCounts(JsonNode input, Map<String, String> referenceValues) {
+        Map<String, Integer> counts = new HashMap<>();
+        ArrayNode arrayNode = (ArrayNode)((input.get("group")).get(0).get("population"));
+        arrayNode.forEach(e -> {
+            String code = e.get("code").get("coding").get(0).get("code").asText();
+            Integer count = e.get("count").asInt();
+            counts.put(referenceValues.getOrDefault(code, code), count);
+        });
+        return counts;
     }
-
-    private static Entry createEntryWithDiagnosticStudyObservation(
-            DiagnosticStudy diagnosticStudy,
-            Map<String, String> codeSystemNames) {
-        Entry entry = CDAFactory.eINSTANCE.createEntry();
-        entry.setTypeCode(x_ActRelationshipEntry.DRIV);
-        CD code = DatatypesFactory.eINSTANCE.createCD();
-        code.setCode(diagnosticStudy.getId());
-        code.setCodeSystemName(diagnosticStudy.getCodeSystemName());
-        code.setCodeSystem(codeSystemNames.get(diagnosticStudy.getCodeSystemName()));
-        code.setDisplayName(diagnosticStudy.getName());
-        Observation o = CDAFactory.eINSTANCE.createObservation();
-        o.setCode(code);
-        o.setClassCode(ActClassObservation.OBS);
-        o.setMoodCode(x_ActMoodDocumentObservation.EVN);
-        ED ed = DatatypesFactory.eINSTANCE.createED("Diagnostic Study, Performed: "+diagnosticStudy.getName());
-        o.setStatusCode(DatatypesFactory.eINSTANCE.createCS("completed"));
-        o.setText(ed);
-        ST derivationExpr = DatatypesFactory.eINSTANCE.createST("DiagnosticStudyPerformed: "+diagnosticStudy.getName());
-        o.setDerivationExpr(derivationExpr);
-        entry.setObservation(o);
-
-        return entry;
+    private static PatientData extractPatientData(JsonNode input) {
+        PatientData patientData = new PatientData();
+        ArrayNode arrayNode = (ArrayNode) input.get("contained");
+        arrayNode.forEach(e -> {
+            if(e.get("resourceType").asText().equalsIgnoreCase("Patient")) {
+                patientData.setPatientId(e.get("id").asText());
+                JsonNode name = ((ArrayNode) e.get("name")).get(0);
+                patientData.setFirstName(((ArrayNode) name.get("given")).get(0).asText());
+                patientData.setLastName(name.get("family").asText());
+                patientData.setDob(formatDate(e.get("birthDate").asText()));
+                patientData.setGender(getGenderCode(e.get("gender").asText()));
+                Address address = new Address();
+                JsonNode addr = ((ArrayNode)e.get("address")).get(0);
+                address.setStreetAddressLine( ((ArrayNode)addr.get("line")).get(0).asText());
+                address.setCity(addr.get("city").asText());
+                address.setPostalCode(addr.get("postalCode").asText());
+                address.setCountry(addr.get("country").asText());
+                patientData.setAddress(address);
+            }
+        });
+        return patientData;
+    }
+    private static String getGenderCode(String gender) {
+        if(gender.equalsIgnoreCase("male")) {
+            return "M";
+        } else {
+            return "F";
+        }
+    }
+    private static String formatDate(String date) {
+        return date.replaceAll("-","");
     }
 }
