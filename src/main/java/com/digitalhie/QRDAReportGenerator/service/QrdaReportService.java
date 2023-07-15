@@ -39,20 +39,6 @@ public class QrdaReportService {
             @RequestBody JsonNode input,
             HttpServletResponse response) throws Exception {
 
-        try {
-            if(!input.get("contained").get(0).get("resourceType").asText().equalsIgnoreCase("Patient")) {
-                throw new RuntimeException("Expecting Patient resourceType file");
-            }
-        } catch (Exception ex) {
-            response.resetBuffer();
-            response.setStatus(400);
-            response.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
-            response.getOutputStream().print(new ObjectMapper()
-                    .writeValueAsString("Error occurred while parsing the input file : "+ex.getMessage()));
-            response.flushBuffer();
-            return;
-        }
-
         String templateFilePath = "templates/2023-CMS-QRDA-I-v1.2-Sample-File.xml";
         String fileName = null;
         try {
@@ -95,20 +81,6 @@ public class QrdaReportService {
     public void generateQrda3File(
             @RequestBody JsonNode input,
             HttpServletResponse response) throws Exception {
-
-        try {
-            if(!input.get("contained").get(0).get("resourceType").asText().equalsIgnoreCase("Organization")) {
-                throw new RuntimeException("Expecting Organization resourceType file");
-            }
-        } catch (Exception ex) {
-            response.resetBuffer();
-            response.setStatus(400);
-            response.setHeader(HttpHeaders.CONTENT_TYPE, "application/json");
-            response.getOutputStream().print(new ObjectMapper()
-                    .writeValueAsString("Error occurred while parsing the input file : "+ex.getMessage()));
-            response.flushBuffer();
-            return;
-        }
 
         String templateFilePath = "templates/2023MIPSGroupSampleQRDA-III-v1.1.xml";
 

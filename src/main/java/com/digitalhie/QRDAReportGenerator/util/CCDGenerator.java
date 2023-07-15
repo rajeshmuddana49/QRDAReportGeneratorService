@@ -170,7 +170,7 @@ public class CCDGenerator {
         }
     }
     private String formatDate(String date) {
-        return date.replaceAll("-","");
+        return date.replaceAll("-","").substring(0,8);
     }
 
 
