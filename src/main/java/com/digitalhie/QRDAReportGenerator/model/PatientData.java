@@ -6,6 +6,15 @@ public class PatientData {
     private String lastName;
     private String gender;
     private String dob;
+
+    private String raceCode;
+
+    private String raceDisplayName;
+
+    private String ethnicityCode;
+
+    private String ethnicityDisplayName;
+
     private Address address;
 
     public String getPatientId() {
@@ -56,6 +65,38 @@ public class PatientData {
         this.address = address;
     }
 
+    public String getRaceCode() {
+        return raceCode;
+    }
+
+    public void setRaceCode(String raceCode) {
+        this.raceCode = raceCode;
+    }
+
+    public String getRaceDisplayName() {
+        return raceDisplayName;
+    }
+
+    public void setRaceDisplayName(String raceDisplayName) {
+        this.raceDisplayName = raceDisplayName;
+    }
+
+    public String getEthnicityCode() {
+        return ethnicityCode;
+    }
+
+    public void setEthnicityCode(String ethnicityCode) {
+        this.ethnicityCode = ethnicityCode;
+    }
+
+    public String getEthnicityDisplayName() {
+        return ethnicityDisplayName;
+    }
+
+    public void setEthnicityDisplayName(String ethnicityDisplayName) {
+        this.ethnicityDisplayName = ethnicityDisplayName;
+    }
+
     @Override
     public String toString() {
         return "PatientData{" +
@@ -64,6 +105,10 @@ public class PatientData {
                 ", lastName='" + lastName + '\'' +
                 ", gender='" + gender + '\'' +
                 ", dob='" + dob + '\'' +
+                ", raceCode='" + raceCode + '\'' +
+                ", raceDisplayName='" + raceDisplayName + '\'' +
+                ", ethnicityCode='" + ethnicityCode + '\'' +
+                ", ethnicityDisplayName='" + ethnicityDisplayName + '\'' +
                 ", address=" + address +
                 '}';
     }

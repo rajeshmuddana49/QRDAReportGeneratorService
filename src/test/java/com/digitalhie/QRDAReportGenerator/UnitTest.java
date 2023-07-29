@@ -1,7 +1,6 @@
 package com.digitalhie.QRDAReportGenerator;
 
-import com.digitalhie.QRDAReportGenerator.model.Address;
-import com.digitalhie.QRDAReportGenerator.model.PatientData;
+import com.digitalhie.QRDAReportGenerator.model.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -13,9 +12,7 @@ import org.openhealthtools.mdht.uml.hl7.datatypes.*;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 /*
     This file used for local testing. Do not delete this file till we finish the project
@@ -24,9 +21,9 @@ public class UnitTest {
 
     public static void main(String[] args) throws Exception {
 
-        String templateFilePath =  "templates/2023MIPSGroupSampleQRDA-III-v1.1.xml";
+        String templateFilePath =  "templates/2023-CMS-QRDA-I-v1.2-Sample-File.xml";
         ObjectMapper mapper = new ObjectMapper();
-        File from = new File("src/test/resources/templates/sample-qrda3-input.json");
+        File from = new File("src/test/resources/templates/sample-qrda1-input.json");
         JsonNode input = mapper.readTree(from);
 
         Map<String, String> referenceValues = new HashMap<>();
@@ -35,7 +32,16 @@ public class UnitTest {
         referenceValues.put("denominator","DENOM");
         referenceValues.put("denominator-exclusion","DENEX");
 
-        Map<String, String> period = extractPeriod(input);
+        PatientData patientData = extractPatientData(input);
+        System.out.println(patientData);
+
+        EncounterData encounterData = extractEncounterData(input);
+        System.out.println(encounterData);
+
+        ObservationData observationData = extractObservationData(input);
+        System.out.println(observationData);
+
+        /*Map<String, String> period = extractPeriod(input);
         Map<String, Integer> populationCounts =  extractPopulationCounts(input, referenceValues);
 
         ConsolPackage.eINSTANCE.eClass();
@@ -70,15 +76,15 @@ public class UnitTest {
                     });
                 }
             }
-        });
+        });*/
 
         // write to file
-        String fileName = UUID.randomUUID()+"_qrda3_ccd_file.xml";
+        /*String fileName = UUID.randomUUID()+"_qrda3_ccd_file.xml";
         FileOutputStream fos = new FileOutputStream(fileName);
         CDAUtil.save(oClinicalDocument, fos);
         fos.close();
         if(cpResource!=null)
-            cpResource.close();
+            cpResource.close();*/
 
     }
 
@@ -101,15 +107,16 @@ public class UnitTest {
     }
     private static PatientData extractPatientData(JsonNode input) {
         PatientData patientData = new PatientData();
-        ArrayNode arrayNode = (ArrayNode) input.get("contained");
-        arrayNode.forEach(e -> {
-            if(e.get("resourceType").asText().equalsIgnoreCase("Patient")) {
-                patientData.setPatientId(e.get("id").asText());
-                JsonNode name = ((ArrayNode) e.get("name")).get(0);
+        ArrayNode arrayNode = (ArrayNode) input.get("entry");
+        for(JsonNode e : arrayNode) {
+            if(e.get("resource").get("resourceType").asText().equalsIgnoreCase("Patient")) {
+                patientData.setPatientId(e.get("resource").get("id").asText());
+                JsonNode name = ((ArrayNode) e.get("resource").get("name")).get(0);
                 patientData.setFirstName(((ArrayNode) name.get("given")).get(0).asText());
                 patientData.setLastName(name.get("family").asText());
-                patientData.setDob(formatDate(e.get("birthDate").asText()));
-                patientData.setGender(getGenderCode(e.get("gender").asText()));
+                patientData.setDob(formatDate(e.get("resource").get("birthDate").asText()));
+                patientData.setGender(getGenderCode(e.get("resource").get("gender").asText()));
+                /*
                 Address address = new Address();
                 JsonNode addr = ((ArrayNode)e.get("address")).get(0);
                 address.setStreetAddressLine( ((ArrayNode)addr.get("line")).get(0).asText());
@@ -117,9 +124,80 @@ public class UnitTest {
                 address.setPostalCode(addr.get("postalCode").asText());
                 address.setCountry(addr.get("country").asText());
                 patientData.setAddress(address);
+                */
+                ArrayNode extensions = (ArrayNode) e.get("resource").get("extension");
+                extensions.forEach(extension -> {
+                    if(extension.get("url").asText().endsWith("us-core-race")) {
+                        ((ArrayNode) extension.get("extension")).forEach(ext -> {
+                            if(ext.get("url").asText().equalsIgnoreCase("ombCategory")) {
+                                patientData.setRaceCode(ext.get("valueCoding").get("code").asText());
+                                patientData.setRaceDisplayName(ext.get("valueCoding").get("display").asText());
+                            }
+                        });
+                    }
+                    else if(extension.get("url").asText().endsWith("us-core-ethnicity")) {
+                        ((ArrayNode) extension.get("extension")).forEach(ext -> {
+                            if(ext.get("url").asText().equalsIgnoreCase("ombCategory")) {
+                                patientData.setEthnicityCode(ext.get("valueCoding").get("code").asText());
+                                patientData.setEthnicityDisplayName(ext.get("valueCoding").get("display").asText());
+                            }
+                        });
+                    }
+                });
+                break;
             }
-        });
+        }
         return patientData;
+    }
+
+    private static EncounterData extractEncounterData(JsonNode input) {
+        EncounterData encounterData = new EncounterData();
+        ArrayNode arrayNode = (ArrayNode) input.get("entry");
+        for(JsonNode e : arrayNode) {
+            if(e.get("resource").get("resourceType").asText().equalsIgnoreCase("Encounter")) {
+                encounterData.setEncounterId(e.get("resource").get("id").asText());
+                JsonNode coding = (((e.get("resource").get("type")).get(0)).get("coding")).get(0);
+                encounterData.setCode(coding.get("code").asText());
+                encounterData.setDisplayName(coding.get("display").asText());
+                encounterData.setPeriodStartDate(formatDate(e.get("resource").get("period").get("start").asText()));
+                encounterData.setPeriodEndDate(formatDate(e.get("resource").get("period").get("end").asText()));
+                break;
+            }
+        }
+        return encounterData;
+    }
+
+    private static ObservationData extractObservationData(JsonNode input) {
+        ObservationData observationData = new ObservationData();
+        ArrayNode arrayNode = (ArrayNode) input.get("entry");
+        for(JsonNode e : arrayNode) {
+            if(e.get("resource").get("resourceType").asText().equalsIgnoreCase("Observation")) {
+                observationData.setObservationId(e.get("resource").get("id").asText());
+                JsonNode coding = (e.get("resource").get("code").get("coding")).get(0);
+                observationData.setCode(coding.get("code").asText());
+                observationData.setDisplayName(coding.get("display").asText());
+                observationData.setEffectiveDateTime(formatDate(e.get("resource").get("effectiveDateTime").asText()));
+
+                JsonNode participantRoleCoding = (e.get("resource").get("valueCodeableConcept").get("coding")).get(0);
+                observationData.setParticipantRoleCode(participantRoleCoding.get("code").asText());
+                observationData.setParticipantRoleDisplayName(participantRoleCoding.get("display").asText());
+
+                ArrayNode components = (ArrayNode) e.get("resource").get("component");
+                List<ComponentData> componentDataList = new ArrayList<>();
+                components.forEach(component -> {
+                    ComponentData componentData = new ComponentData();
+                    componentData.setCode(component.get("code").get("coding").get(0).get("code").asText());
+                    componentData.setDisplayName(component.get("code").get("coding").get(0).get("display").asText());
+                    componentData.setValue(component.get("valueQuantity").get("value").asText());
+                    componentData.setUnit(component.get("valueQuantity").get("unit").asText());
+                    componentData.setValueCode(component.get("valueQuantity").get("code").asText());
+                    componentDataList.add(componentData);
+                });
+                observationData.setComponents(componentDataList);
+                break;
+            }
+        }
+        return observationData;
     }
     private static String getGenderCode(String gender) {
         if(gender.equalsIgnoreCase("male")) {
@@ -129,6 +207,6 @@ public class UnitTest {
         }
     }
     private static String formatDate(String date) {
-        return date.replaceAll("-","");
+        return date.replaceAll("-","").substring(0, 8);
     }
 }

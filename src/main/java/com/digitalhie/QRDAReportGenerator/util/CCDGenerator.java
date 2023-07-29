@@ -1,12 +1,9 @@
 package com.digitalhie.QRDAReportGenerator.util;
 
-import com.digitalhie.QRDAReportGenerator.model.Address;
-import com.digitalhie.QRDAReportGenerator.model.PatientData;
+import com.digitalhie.QRDAReportGenerator.model.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 
-import org.eclipse.emf.ecore.EStructuralFeature;
-import org.eclipse.emf.ecore.util.FeatureMap;
 import org.openhealthtools.mdht.uml.cda.*;
 import org.openhealthtools.mdht.uml.cda.consol.ConsolPackage;
 import org.openhealthtools.mdht.uml.cda.util.CDAUtil;
@@ -87,6 +84,8 @@ public class CCDGenerator {
         ClinicalDocument oClinicalDocument = CDAUtil.load(cpResource); //Loads CDADocument.
 
         PatientData patientData = extractPatientData(input);
+        EncounterData encounterData = extractEncounterData(input);
+        ObservationData observationData = extractObservationData(input);
 
         PatientRole patientRole = oClinicalDocument.getPatientRoles().get(0);
         for(II id : patientRole.getIds()) {
@@ -94,6 +93,7 @@ public class CCDGenerator {
                 id.setExtension(patientData.getPatientId());
             }
         }
+        /*
         AD address = patientRole.getAddrs().get(0);
         FeatureMap addressMixed = address.getMixed();
         addressMixed.forEach(a -> {
@@ -119,15 +119,51 @@ public class CCDGenerator {
                 addr.getMixed().setValue(0, " ");
             }
         });
+        */
         Patient patient = patientRole.getPatient();
 
         patient.getAdministrativeGenderCode().setCode(patientData.getGender());
+
         patient.getBirthTime().setValue(patientData.getDob());
+
         PN name = patient.getNames().stream().findFirst().get();
         ENXP givenName = name.getGivens().stream().findFirst().get();
         givenName.getMixed().setValue(0, patientData.getFirstName());
         ENXP familyName = name.getFamilies().stream().findFirst().get();
         familyName.getMixed().setValue(0, patientData.getLastName());
+
+        CE raceCode = patient.getRaceCode();
+        raceCode.setCode(patientData.getRaceCode());
+        raceCode.setDisplayName(patientData.getRaceDisplayName());
+
+        CE ethnicGroupCode = patient.getEthnicGroupCode();
+        ethnicGroupCode.setCode(patientData.getEthnicityCode());
+        ethnicGroupCode.setDisplayName(patientData.getEthnicityDisplayName());
+
+        // Find Patient section with templateId
+        Section patientSection = oClinicalDocument.getSections().stream()
+                .filter(section -> {
+                    for(II templateId: section.getTemplateIds()) {
+                        if(templateId.getRoot() !=null && templateId.getRoot().equals("2.16.840.1.113883.10.20.17.2.4")) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }).findFirst().orElseThrow(() -> new Exception("Patient section not found at the template"));
+
+        Encounter encounterEntry = patientSection.getEncounters().stream().findFirst().get();
+        modifyEncounter(encounterEntry, encounterData);
+
+        Observation diagnosticStudyObservation = patientSection.getObservations().stream()
+                .filter(o -> {
+                            for(II templateId: o.getTemplateIds()) {
+                                if(templateId.getRoot() !=null && templateId.getRoot().equals("2.16.840.1.113883.10.20.24.3.18")) {
+                                    return true;
+                                }
+                            }
+                            return false;
+                }).findFirst().orElseThrow(() -> new Exception("Diagnostic Study observation not found at the template"));
+        modifyDiagnosticStudyObservation(diagnosticStudyObservation, observationData);
 
         // write to file
         String fileName = UUID.randomUUID()+"_qrda1_ccd_file.xml";
@@ -142,15 +178,16 @@ public class CCDGenerator {
 
     private PatientData extractPatientData(JsonNode input) {
         PatientData patientData = new PatientData();
-        ArrayNode arrayNode = (ArrayNode) input.get("contained");
-        arrayNode.forEach(e -> {
-            if(e.get("resourceType").asText().equalsIgnoreCase("Patient")) {
-                patientData.setPatientId(e.get("id").asText());
-                JsonNode name = ((ArrayNode) e.get("name")).get(0);
+        ArrayNode arrayNode = (ArrayNode) input.get("entry");
+        for(JsonNode e : arrayNode) {
+            if(e.get("resource").get("resourceType").asText().equalsIgnoreCase("Patient")) {
+                patientData.setPatientId(e.get("resource").get("id").asText());
+                JsonNode name = ((ArrayNode) e.get("resource").get("name")).get(0);
                 patientData.setFirstName(((ArrayNode) name.get("given")).get(0).asText());
                 patientData.setLastName(name.get("family").asText());
-                patientData.setDob(formatDate(e.get("birthDate").asText()));
-                patientData.setGender(getGenderCode(e.get("gender").asText()));
+                patientData.setDob(formatDate(e.get("resource").get("birthDate").asText()));
+                patientData.setGender(getGenderCode(e.get("resource").get("gender").asText()));
+                /*
                 Address address = new Address();
                 JsonNode addr = ((ArrayNode)e.get("address")).get(0);
                 address.setStreetAddressLine( ((ArrayNode)addr.get("line")).get(0).asText());
@@ -158,10 +195,82 @@ public class CCDGenerator {
                 address.setPostalCode(addr.get("postalCode").asText());
                 address.setCountry(addr.get("country").asText());
                 patientData.setAddress(address);
+                */
+                ArrayNode extensions = (ArrayNode) e.get("resource").get("extension");
+                extensions.forEach(extension -> {
+                    if(extension.get("url").asText().endsWith("us-core-race")) {
+                        ((ArrayNode) extension.get("extension")).forEach(ext -> {
+                            if(ext.get("url").asText().equalsIgnoreCase("ombCategory")) {
+                                patientData.setRaceCode(ext.get("valueCoding").get("code").asText());
+                                patientData.setRaceDisplayName(ext.get("valueCoding").get("display").asText());
+                            }
+                        });
+                    }
+                    else if(extension.get("url").asText().endsWith("us-core-ethnicity")) {
+                        ((ArrayNode) extension.get("extension")).forEach(ext -> {
+                            if(ext.get("url").asText().equalsIgnoreCase("ombCategory")) {
+                                patientData.setEthnicityCode(ext.get("valueCoding").get("code").asText());
+                                patientData.setEthnicityDisplayName(ext.get("valueCoding").get("display").asText());
+                            }
+                        });
+                    }
+                });
+                break;
             }
-        });
+        }
         return patientData;
     }
+
+    private EncounterData extractEncounterData(JsonNode input) {
+        EncounterData encounterData = new EncounterData();
+        ArrayNode arrayNode = (ArrayNode) input.get("entry");
+        for(JsonNode e : arrayNode) {
+            if(e.get("resource").get("resourceType").asText().equalsIgnoreCase("Encounter")) {
+                encounterData.setEncounterId(e.get("resource").get("id").asText());
+                JsonNode coding = (((e.get("resource").get("type")).get(0)).get("coding")).get(0);
+                encounterData.setCode(coding.get("code").asText());
+                encounterData.setDisplayName(coding.get("display").asText());
+                encounterData.setPeriodStartDate(formatDate(e.get("resource").get("period").get("start").asText()));
+                encounterData.setPeriodEndDate(formatDate(e.get("resource").get("period").get("end").asText()));
+                break;
+            }
+        }
+        return encounterData;
+    }
+
+    private ObservationData extractObservationData(JsonNode input) {
+        ObservationData observationData = new ObservationData();
+        ArrayNode arrayNode = (ArrayNode) input.get("entry");
+        for(JsonNode e : arrayNode) {
+            if(e.get("resource").get("resourceType").asText().equalsIgnoreCase("Observation")) {
+                observationData.setObservationId(e.get("resource").get("id").asText());
+                JsonNode coding = (e.get("resource").get("code").get("coding")).get(0);
+                observationData.setCode(coding.get("code").asText());
+                observationData.setDisplayName(coding.get("display").asText());
+                observationData.setEffectiveDateTime(formatDate(e.get("resource").get("effectiveDateTime").asText()));
+
+                JsonNode participantRoleCoding = (e.get("resource").get("valueCodeableConcept").get("coding")).get(0);
+                observationData.setParticipantRoleCode(participantRoleCoding.get("code").asText());
+                observationData.setParticipantRoleDisplayName(participantRoleCoding.get("display").asText());
+
+                ArrayNode components = (ArrayNode) e.get("resource").get("component");
+                List<ComponentData> componentDataList = new ArrayList<>();
+                components.forEach(component -> {
+                    ComponentData componentData = new ComponentData();
+                    componentData.setCode(component.get("code").get("coding").get(0).get("code").asText());
+                    componentData.setDisplayName(component.get("code").get("coding").get(0).get("display").asText());
+                    componentData.setValue(component.get("valueQuantity").get("value").asText());
+                    componentData.setUnit(component.get("valueQuantity").get("unit").asText());
+                    componentData.setValueCode(component.get("valueQuantity").get("code").asText());
+                    componentDataList.add(componentData);
+                });
+                observationData.setComponents(componentDataList);
+                break;
+            }
+        }
+        return observationData;
+    }
+
     private String getGenderCode(String gender) {
         if(gender.equalsIgnoreCase("male")) {
             return "M";
@@ -191,4 +300,32 @@ public class CCDGenerator {
         });
         return counts;
     }
+
+    private void modifyEncounter(Encounter e, EncounterData encounterData) {
+        CD code = e.getCode();
+        code.setCode(encounterData.getCode());
+        code.setDisplayName(encounterData.getDisplayName());
+
+        IVL_TS effectiveTime = e.getEffectiveTime();
+        effectiveTime.getLow().setValue(encounterData.getPeriodStartDate());
+        effectiveTime.getHigh().setValue(encounterData.getPeriodEndDate());
+
+        ED ed = DatatypesFactory.eINSTANCE.createED("Encounter, Performed: "+encounterData.getDisplayName());
+        e.setText(ed);
+    }
+
+    private void modifyDiagnosticStudyObservation(Observation o, ObservationData observationData) {
+        CD code = o.getCode();
+        code.setCode(observationData.getCode());
+        code.setDisplayName(observationData.getDisplayName());
+        Participant2 participant = o.getParticipants().stream().findFirst().get();
+        participant.getTime().getLow().setValue(observationData.getEffectiveDateTime());
+        ParticipantRole participantRole = participant.getParticipantRole();
+        participantRole.getCode().setCode(observationData.getParticipantRoleCode());
+        participantRole.getCode().setDisplayName(observationData.getParticipantRoleDisplayName());
+
+        ED ed = DatatypesFactory.eINSTANCE.createED("Diagnostic Study, Performed: "+observationData.getDisplayName());
+        o.setText(ed);
+    }
+
 }
