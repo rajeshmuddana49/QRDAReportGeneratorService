@@ -39,10 +39,9 @@ public class QrdaReportService {
             @RequestBody JsonNode input,
             HttpServletResponse response) throws Exception {
 
-        String templateFilePath = "templates/2023-CMS-QRDA-I-v1.2-Sample-File.xml";
         String fileName = null;
         try {
-            fileName = ccdGenerator.createQRDA1(templateFilePath, input);
+            fileName = ccdGenerator.createQRDA1(input);
         } catch (Exception ex) {
             logger.error("Error occurred while creating CCD file: "+ex.getMessage(), ex);
             response.resetBuffer();
@@ -82,11 +81,9 @@ public class QrdaReportService {
             @RequestBody JsonNode input,
             HttpServletResponse response) throws Exception {
 
-        String templateFilePath = "templates/2023MIPSGroupSampleQRDA-III-v1.1.xml";
-
         String fileName = null;
         try {
-            fileName = ccdGenerator.createQRDA3(templateFilePath, input);
+            fileName = ccdGenerator.createQRDA3(input);
         } catch (Exception ex) {
             logger.error("Error occurred while creating CCD file: "+ex.getMessage(), ex);
             response.resetBuffer();

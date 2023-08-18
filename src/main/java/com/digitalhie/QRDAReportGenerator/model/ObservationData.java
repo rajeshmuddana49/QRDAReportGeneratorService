@@ -16,6 +16,12 @@ public class ObservationData {
 
     private String participantRoleDisplayName;
 
+    private String participantRoleCodeSystemName;
+
+    private String codeSystemName;
+
+    private String status;
+
     private List<ComponentData> components;
 
     public String getObservationId() {
@@ -74,16 +80,27 @@ public class ObservationData {
         this.components = components;
     }
 
-    @Override
-    public String toString() {
-        return "ObservationData{" +
-                "observationId='" + observationId + '\'' +
-                ", code='" + code + '\'' +
-                ", displayName='" + displayName + '\'' +
-                ", effectiveDateTime='" + effectiveDateTime + '\'' +
-                ", participantRoleCode='" + participantRoleCode + '\'' +
-                ", participantRoleDisplayName='" + participantRoleDisplayName + '\'' +
-                ", components=" + components +
-                '}';
+    public String getCodeSystemName() {
+        return codeSystemName;
+    }
+
+    public void setCodeSystemName(String codeSystemName) {
+        this.codeSystemName = codeSystemName;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public String getParticipantRoleCodeSystemName() {
+        return participantRoleCodeSystemName;
+    }
+
+    public void setParticipantRoleCodeSystemName(String participantRoleCodeSystemName) {
+        this.participantRoleCodeSystemName = participantRoleCodeSystemName;
     }
 }

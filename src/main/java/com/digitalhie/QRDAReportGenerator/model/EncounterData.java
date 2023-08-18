@@ -12,6 +12,10 @@ public class EncounterData {
 
     private String periodEndDate;
 
+    private String status;
+
+    private String codeSystemName;
+
     public String getEncounterId() {
         return encounterId;
     }
@@ -52,14 +56,19 @@ public class EncounterData {
         this.periodEndDate = periodEndDate;
     }
 
-    @Override
-    public String toString() {
-        return "Encounter{" +
-                "encounterId='" + encounterId + '\'' +
-                ", code='" + code + '\'' +
-                ", displayName='" + displayName + '\'' +
-                ", periodStartDate='" + periodStartDate + '\'' +
-                ", periodEndDate='" + periodEndDate + '\'' +
-                '}';
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public String getCodeSystemName() {
+        return codeSystemName;
+    }
+
+    public void setCodeSystemName(String codeSystemName) {
+        this.codeSystemName = codeSystemName;
     }
 }
